@@ -32,10 +32,9 @@ func handler(ctx context.Context, event events.CloudWatchEvent) error {
 	convert.PrintCarouselColumns(columns)
 	template := linebot.NewTemplateMessage("Pocket Items", linebot.NewCarouselTemplate(columns...))
 
-	// メッセージをPush
-	userId := "Ubcf541e95f55234fc1413f267bae55e4" // 自分のuserId
-	if _, err := bot.PushMessage(userId, template).Do(); err != nil {
-		log.Printf("Failed to send message to user %s: %v", userId, err)
+	// メッセージをブロードキャスト
+	if _, err := bot.BroadcastMessage(template).Do(); err != nil {
+		log.Printf("Failed to send message : %v", err)
 	}
 
 	return nil
