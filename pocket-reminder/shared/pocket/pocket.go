@@ -1,26 +1,19 @@
 package pocket
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strings"
 )
 
 var (
 	BASE_URL = "https://getpocket.com/v3/"
 
 	PATH_OAUTH_REQUEST = "oauth/request"
-
-	PATH_OAUTH_AUTHZ = "oauth/authorize"
-)
-
-const (
-	EndpointURL = "https://getpocket.com/v3/get"
+	PATH_OAUTH_AUTHZ   = "oauth/authorize"
+	PATH_GET           = "get"
 )
 
 type PocketResponse struct {
@@ -61,17 +54,12 @@ type SearchMeta struct {
 	SearchType string `json:"search_type"`
 }
 
-type AuthRequest struct {
-	ConsumerKey string `json:"consumer_key"`
-	Code        string `json:"code"`
-}
-
 func FetchItems(consumerKey string, accessToken string) *PocketResponse {
 	params := url.Values{}
 	params.Set("consumer_key", consumerKey)
 	params.Set("access_token", accessToken)
 
-	resp, err := http.Get(EndpointURL + "?" + params.Encode())
+	resp, err := http.Get(BASE_URL + PATH_GET + "?" + params.Encode())
 	if err != nil {
 		fmt.Printf("Error making request: %v\n", err)
 		return nil
@@ -92,56 +80,4 @@ func FetchItems(consumerKey string, accessToken string) *PocketResponse {
 	}
 
 	return &pocketResponse
-}
-
-func GetRequestCode(consumerKey string) (string, error) {
-	values := url.Values{}
-	values.Add("consumer_key", consumerKey)
-	values.Add("redirect_uri", "pocketreminder://redirect")
-
-	// リクエストコード取得
-	res, err := http.PostForm(
-		BASE_URL+PATH_OAUTH_REQUEST,
-		values,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return "", err
-	}
-	code := strings.Split(string(body), "=")[1]
-	fmt.Printf("code: %v", code)
-
-	return code, nil
-}
-
-func Authorize(consumerKey string, code string) error {
-	// 認証
-	authReq := &AuthRequest{
-		ConsumerKey: consumerKey,
-		Code:        code,
-	}
-
-	json, _ := json.Marshal(authReq)
-	fmt.Println(string(json))
-
-	res, err := http.Post(
-		BASE_URL+PATH_OAUTH_AUTHZ,
-		"application/json",
-		bytes.NewBuffer(json),
-	)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("body: %s", body)
-
-	return nil
 }
