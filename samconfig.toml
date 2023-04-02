@@ -1,0 +1,10 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "aws-lambda-go-sample"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-qry71g1u0e6r"
+s3_prefix = "aws-lambda-go-sample"
+region = "ap-northeast-1"
+capabilities = "CAPABILITY_IAM"
+image_repositories = []

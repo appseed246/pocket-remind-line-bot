@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: PocketReminder
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 5
+
+Resources:
+  PocketReminderReplyFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: pocket-reminder/reply-function
+      Handler: main
+      Runtime: go1.x
+      Architectures:
+        - x86_64
+      Events:
+        CatchAll:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /
+            Method: POST
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          CHANNEL_ACCESS_SECRET: !Sub '{{resolve:ssm:PocketReminderChannelAccessSecret}}'
+          CHANNEL_ACCESS_TOKEN: !Sub '{{resolve:ssm:PocketReminderChannelAccessToken}}'
+          CONSUMER_KEY: !Sub '{{resolve:ssm:PocketReminderConsumerKey}}'
+          ACCESS_TOKEN: !Sub '{{resolve:ssm:PocketReminderAccessToken}}'
+  PocketReminderPushFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: pocket-reminder/push-function
+      Handler: main
+      Runtime: go1.x
+      Architectures:
+        - x86_64
+      Events:
+        DailyPushEvent: # 定刻でPushメッセージを送信するためのイベント
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 10 * * ? *) # JST 19:00
+            Input: '{}'
+      Environment:
+        Variables:
+          CHANNEL_ACCESS_SECRET: !Sub '{{resolve:ssm:PocketReminderChannelAccessSecret}}'
+          CHANNEL_ACCESS_TOKEN: !Sub '{{resolve:ssm:PocketReminderChannelAccessToken}}'
+          CONSUMER_KEY: !Sub '{{resolve:ssm:PocketReminderConsumerKey}}'
+          ACCESS_TOKEN: !Sub '{{resolve:ssm:PocketReminderAccessToken}}'
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  PocketReminderAPI:
+    Description: "API Gateway endpoint URL for Prod environment for First Function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  PocketReminderReplyFunction:
+    Value: !GetAtt PocketReminderReplyFunction.Arn
+  PocketReminderReplyFunctionIamRole:
+    Value: !GetAtt PocketReminderReplyFunctionRole.Arn
+  PocketReminderPushFunction:
+    Value: !GetAtt PocketReminderPushFunction.Arn
+  PocketReminderPushFunctionIamRole:
+    Value: !GetAtt PocketReminderPushFunctionRole.Arn
