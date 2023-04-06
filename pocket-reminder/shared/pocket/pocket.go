@@ -2,6 +2,7 @@ package pocket
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -17,7 +18,13 @@ var (
 	PATH_MODIFY        = "send"
 )
 
-type PocketResponse struct {
+type Client struct {
+	BaseURL     string
+	ConsumerKey string
+	AccessToken string
+}
+
+type GetResponse struct {
 	Status     int                   `json:"status"`
 	Complete   int                   `json:"complete"`
 	List       map[string]PocketItem `json:"list"`
@@ -67,12 +74,28 @@ type ModifyResponse struct {
 	Status       uint8  `json:"status"`
 }
 
-func FetchItems(consumerKey string, accessToken string) *PocketResponse {
-	params := url.Values{}
-	params.Set("consumer_key", consumerKey)
-	params.Set("access_token", accessToken)
+func New(consumerKey string, accessToken string) (*Client, error) {
+	if consumerKey == "" {
+		return nil, errors.New("consumer key must not be empty")
+	}
 
-	resp, err := http.Get(BASE_URL + PATH_GET + "?" + params.Encode())
+	if accessToken == "" {
+		return nil, errors.New("access token must not be empty")
+	}
+
+	return &Client{
+		BaseURL:     BASE_URL,
+		ConsumerKey: consumerKey,
+		AccessToken: accessToken,
+	}, nil
+}
+
+func (c *Client) FetchItems() *GetResponse {
+	params := url.Values{}
+	params.Set("consumer_key", c.ConsumerKey)
+	params.Set("access_token", c.AccessToken)
+
+	resp, err := http.Get(c.BaseURL + PATH_GET + "?" + params.Encode())
 	if err != nil {
 		fmt.Printf("Error making request: %v\n", err)
 		return nil
@@ -85,7 +108,7 @@ func FetchItems(consumerKey string, accessToken string) *PocketResponse {
 		return nil
 	}
 
-	var pocketResponse PocketResponse
+	var pocketResponse GetResponse
 	err = json.Unmarshal(body, &pocketResponse)
 	if err != nil {
 		fmt.Printf("Error unmarshalling JSON: %v\n", err)
@@ -95,7 +118,7 @@ func FetchItems(consumerKey string, accessToken string) *PocketResponse {
 	return &pocketResponse
 }
 
-func ModifyItem(consumerKey string, accessToken string, actions *[]ModifyAction) (*ModifyResponse, error) {
+func (c *Client) ModifyItem(actions *[]ModifyAction) (*ModifyResponse, error) {
 	// actionsのJsonArray文字列への変換
 	jsonData, err := json.Marshal(*actions)
 	if err != nil {
@@ -104,11 +127,11 @@ func ModifyItem(consumerKey string, accessToken string, actions *[]ModifyAction)
 	}
 
 	params := url.Values{}
-	params.Set("consumer_key", consumerKey)
-	params.Set("access_token", accessToken)
+	params.Set("consumer_key", c.ConsumerKey)
+	params.Set("access_token", c.AccessToken)
 	params.Set("actions", string(jsonData))
 
-	resp, err := http.Get(BASE_URL + PATH_MODIFY + "?" + params.Encode())
+	resp, err := http.Get(c.BaseURL + PATH_MODIFY + "?" + params.Encode())
 	if err != nil {
 		fmt.Printf("Error making request: %v\n", err)
 		return nil, err

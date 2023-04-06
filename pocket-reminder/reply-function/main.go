@@ -40,6 +40,16 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	if err != nil {
 		return events.APIGatewayProxyResponse{}, err
 	}
+
+	// Pocket API Client初期化
+	pocketClient, err := pocket.New(
+		os.Getenv("CONSUMER_KEY"),
+		os.Getenv("ACCESS_TOKEN"),
+	)
+	if err != nil {
+		return events.APIGatewayProxyResponse{}, err
+	}
+
 	fmt.Println("instance created.")
 
 	// APIリクエストをパース
@@ -49,10 +59,6 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	}
 	fmt.Println("request parsed.")
 
-	// get pocket api keys
-	consumerKey := os.Getenv("CONSUMER_KEY")
-	accessToken := os.Getenv("ACCESS_TOKEN")
-
 	for _, event := range lineEvents {
 		if event.Type == linebot.EventTypeMessage {
 			switch message := event.Message.(type) {
@@ -61,7 +67,7 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 				switch command {
 				case "/carousel":
 					fmt.Println("case: /carousel")
-					response := pocket.FetchItems(consumerKey, accessToken)
+					response := pocketClient.FetchItems()
 					columns := convert.CreateCarouselMessage(response)
 					template := linebot.NewTemplateMessage("Pocket Items", linebot.NewCarouselTemplate(columns...))
 					if _, err = bot.ReplyMessage(event.ReplyToken, template).Do(); err != nil {
@@ -70,7 +76,7 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 				case "/archive":
 					fmt.Println("case: /archive")
 					actions := []pocket.ModifyAction{{Action: "archive", ItemId: parameter[0]}}
-					_, err := pocket.ModifyItem(consumerKey, accessToken, &actions)
+					_, err := pocketClient.ModifyItem(&actions)
 
 					if err != nil {
 						fmt.Println(err.Error())
@@ -89,7 +95,7 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 				case "/readd":
 					fmt.Println("case: /readd")
 					actions := []pocket.ModifyAction{{Action: "readd", ItemId: parameter[0]}}
-					_, err := pocket.ModifyItem(consumerKey, accessToken, &actions)
+					_, err := pocketClient.ModifyItem(&actions)
 					if err != nil {
 						fmt.Println(err.Error())
 					} else {

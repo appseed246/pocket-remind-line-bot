@@ -24,10 +24,20 @@ func handler(ctx context.Context, event events.CloudWatchEvent) error {
 	if err != nil {
 		log.Fatal("failed to create line client.")
 	}
+
+	// Pocket API Client初期化
+	pocketClient, err := pocket.New(
+		os.Getenv("CONSUMER_KEY"),
+		os.Getenv("ACCESS_TOKEN"),
+	)
+	if err != nil {
+		log.Fatal("failed to create pocket client.")
+	}
+
 	fmt.Println("instance created.")
 
 	// カルーセル作成
-	response := pocket.FetchItems(os.Getenv("CONSUMER_KEY"), os.Getenv("ACCESS_TOKEN"))
+	response := pocketClient.FetchItems()
 	columns := convert.CreateCarouselMessage(response)
 	convert.PrintCarouselColumns(columns)
 	template := linebot.NewTemplateMessage("Pocket Items", linebot.NewCarouselTemplate(columns...))

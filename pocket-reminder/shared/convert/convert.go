@@ -10,7 +10,7 @@ import (
 	"github.com/line/line-bot-sdk-go/v7/linebot"
 )
 
-func CreateCarouselMessage(response *pocket.PocketResponse) []*linebot.CarouselColumn {
+func CreateCarouselMessage(response *pocket.GetResponse) []*linebot.CarouselColumn {
 	var columns []*linebot.CarouselColumn
 
 	counter := 0
