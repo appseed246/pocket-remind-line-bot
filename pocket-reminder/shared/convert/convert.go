@@ -51,7 +51,8 @@ func createCarouselColumnFromPocketItem(item pocket.PocketItem) *linebot.Carouse
 	modifiedURL := parsedURL.String()
 
 	actions := []linebot.TemplateAction{
-		linebot.NewURIAction("Open URL", modifiedURL),
+		linebot.NewURIAction("ブラウザで開く", modifiedURL),
+		linebot.NewMessageAction("アーカイブ", fmt.Sprintf("/archive %s", item.ItemID)),
 	}
 	return linebot.NewCarouselColumn(imageURL, truncatedTitle, truncatedText, actions...)
 }
