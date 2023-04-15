@@ -22,12 +22,26 @@ Resources:
           Properties:
             Path: /
             Method: POST
+      Policies:
+        - AWSLambdaExecute
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+              Resource:
+                - !GetAtt PocketReminderTable.Arn
+                - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PocketReminderTable}/index/*'
       Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
         Variables:
           CHANNEL_ACCESS_SECRET: !Sub '{{resolve:ssm:PocketReminderChannelAccessSecret}}'
           CHANNEL_ACCESS_TOKEN: !Sub '{{resolve:ssm:PocketReminderChannelAccessToken}}'
           CONSUMER_KEY: !Sub '{{resolve:ssm:PocketReminderConsumerKey}}'
-          ACCESS_TOKEN: !Sub '{{resolve:ssm:PocketReminderAccessToken}}'
   PocketReminderPushFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -42,13 +56,94 @@ Resources:
           Properties:
             Schedule: cron(0 10 * * ? *) # JST 19:00
             Input: '{}'
+      Policies:
+        - AWSLambdaExecute
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource:
+                - !GetAtt PocketReminderTable.Arn
+                - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PocketReminderTable}/index/*'
       Environment:
         Variables:
           CHANNEL_ACCESS_SECRET: !Sub '{{resolve:ssm:PocketReminderChannelAccessSecret}}'
           CHANNEL_ACCESS_TOKEN: !Sub '{{resolve:ssm:PocketReminderChannelAccessToken}}'
           CONSUMER_KEY: !Sub '{{resolve:ssm:PocketReminderConsumerKey}}'
-          ACCESS_TOKEN: !Sub '{{resolve:ssm:PocketReminderAccessToken}}'
-
+          OWN_LINE_ID: !Sub '{{resolve:ssm:PocketReminderOwnLineId}}'
+  PocketReminderAuthorizationFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: pocket-reminder/authorization-function
+      Handler: main
+      Runtime: go1.x
+      Architectures:
+        - x86_64
+      Events:
+        CatchAll:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /auth
+            Method: GET
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          CONSUMER_KEY: !Sub '{{resolve:ssm:PocketReminderConsumerKey}}'
+  PocketReminderTokenFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: pocket-reminder/token-function
+      Handler: main
+      Runtime: go1.x
+      Architectures:
+        - x86_64
+      Events:
+        CatchAll:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /token
+            Method: GET
+      Policies:
+        - AWSLambdaExecute
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt PocketReminderTable.Arn
+                - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PocketReminderTable}/index/*'
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          CONSUMER_KEY: !Sub '{{resolve:ssm:PocketReminderConsumerKey}}'
+  PocketReminderTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: PocketReminderTable
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: lineUserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      GlobalSecondaryIndexes:
+        - IndexName: LineUserIdIndex
+          KeySchema:
+            - AttributeName: lineUserId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
   # Find out more about other implicit resources you can reference within SAM
@@ -64,3 +159,11 @@ Outputs:
     Value: !GetAtt PocketReminderPushFunction.Arn
   PocketReminderPushFunctionIamRole:
     Value: !GetAtt PocketReminderPushFunctionRole.Arn
+  PocketReminderAuthorizationFunction:
+    Value: !GetAtt PocketReminderAuthorizationFunction.Arn
+  PocketReminderAuthorizationFunctionIamRole:
+    Value: !GetAtt PocketReminderAuthorizationFunctionRole.Arn
+  PocketReminderTokenFunction:
+    Value: !GetAtt PocketReminderTokenFunction.Arn
+  PocketReminderTokenFunctionIamRole:
+    Value: !GetAtt PocketReminderTokenFunctionRole.Arn

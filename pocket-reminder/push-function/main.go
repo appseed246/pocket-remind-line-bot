@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"pocket-reminder/shared/convert"
+	"pocket-reminder/shared/datasource"
 	"pocket-reminder/shared/pocket"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -22,29 +23,48 @@ func handler(ctx context.Context, event events.CloudWatchEvent) error {
 		os.Getenv("CHANNEL_ACCESS_TOKEN"),
 	)
 	if err != nil {
-		log.Fatal("failed to create line client.")
+		log.Fatal("failed to create line client.", err)
 	}
 
-	// Pocket API Client初期化
-	pocketClient, err := pocket.New(
-		os.Getenv("CONSUMER_KEY"),
-		os.Getenv("ACCESS_TOKEN"),
-	)
+	// DbClient初期化
+	db, err := datasource.New()
 	if err != nil {
-		log.Fatal("failed to create pocket client.")
+		log.Fatal("datasource create error.", err)
 	}
 
-	fmt.Println("instance created.")
+	// TODO: 現在は自分専用
+	lineUserIdList := []string{os.Getenv("OWN_LINE_ID")}
 
-	// カルーセル作成
-	response := pocketClient.FetchItems()
-	columns := convert.CreateCarouselMessage(response)
-	convert.PrintCarouselColumns(columns)
-	template := linebot.NewTemplateMessage("Pocket Items", linebot.NewCarouselTemplate(columns...))
+	// TODO: Botを利用するすべてのユーザへのブロードキャンストに対応
+	for _, lineUserId := range lineUserIdList {
+		user, err := db.GetPocketReminderUser(lineUserId)
+		if err != nil {
+			log.Println("user info access error: " + err.Error())
+			break
+		}
+		if user == nil {
+			log.Println("user not found.")
+			break
+		}
 
-	// メッセージをブロードキャスト
-	if _, err := bot.BroadcastMessage(template).Do(); err != nil {
-		log.Printf("Failed to send message : %v", err)
+		pocketClient, err := pocket.New(
+			os.Getenv("CONSUMER_KEY"),
+			user.PocketAccessToken,
+		)
+		if err != nil {
+			log.Fatal("failed to create pocket client.", err)
+		}
+
+		// カルーセル作成
+		response := pocketClient.FetchItems()
+		columns := convert.CreateCarouselMessage(response)
+		convert.PrintCarouselColumns(columns)
+		template := linebot.NewTemplateMessage("Pocket Items", linebot.NewCarouselTemplate(columns...))
+
+		// メッセージをブロードキャスト
+		if _, err := bot.PushMessage(lineUserId, template).Do(); err != nil {
+			log.Printf("Failed to send message : %v", err)
+		}
 	}
 
 	return nil

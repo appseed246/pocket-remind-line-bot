@@ -2,29 +2,17 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"pocket-reminder/shared/convert"
+	"pocket-reminder/shared/datasource"
 	"pocket-reminder/shared/pocket"
+	"pocket-reminder/shared/settings"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/line/line-bot-sdk-go/v7/linebot"
-)
-
-var (
-	// DefaultHTTPGetAddress Default Address
-	DefaultHTTPGetAddress = "https://checkip.amazonaws.com"
-	// ErrNoIP No IP found in response
-	ErrNoIP = errors.New("no IP in HTTP response")
-	// ErrNon200Response non 200 status code in response
-	ErrNon200Response        = errors.New("non 200 Response found")
-	ErrNoConsumerKey         = errors.New("comsumer key is not set")
-	ErrNoAccessToken         = errors.New("access token is not set")
-	ErrNoChannelAccessToken  = errors.New("channel access token is not set")
-	ErrNoChannelAccessSecret = errors.New("channel access secret is not set")
 )
 
 func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -41,11 +29,7 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 		return events.APIGatewayProxyResponse{}, err
 	}
 
-	// Pocket API Client初期化
-	pocketClient, err := pocket.New(
-		os.Getenv("CONSUMER_KEY"),
-		os.Getenv("ACCESS_TOKEN"),
-	)
+	db, err := datasource.New()
 	if err != nil {
 		return events.APIGatewayProxyResponse{}, err
 	}
@@ -61,10 +45,41 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 
 	for _, event := range lineEvents {
 		if event.Type == linebot.EventTypeMessage {
+			lineUserId := event.Source.UserID
+
+			// PocketAPIのアクセストークン取得
+			// ユーザ情報が存在しない場合ログインを要求する
+			user, err := db.GetPocketReminderUser(lineUserId)
+			if err != nil {
+				fmt.Println(err.Error())
+				break
+			}
+			if user == nil || user.PocketAccessToken == "" {
+				if _, err = bot.ReplyMessage(event.ReplyToken, createLoginRequestMessage(lineUserId)).Do(); err != nil {
+					fmt.Println(err)
+				}
+				break
+			}
+			accessToken := user.PocketAccessToken
+
+			// Pocket API Client初期化
+			pocketClient, err := pocket.New(
+				os.Getenv("CONSUMER_KEY"),
+				accessToken,
+			)
+			if err != nil {
+				return events.APIGatewayProxyResponse{}, err
+			}
+
 			switch message := event.Message.(type) {
 			case *linebot.TextMessage:
 				command, parameter := parseMessage(message.Text)
 				switch command {
+				case "/auth":
+					fmt.Println("case: /auth")
+					if _, err = bot.ReplyMessage(event.ReplyToken, createLoginRequestMessage(lineUserId)).Do(); err != nil {
+						fmt.Println(err)
+					}
 				case "/carousel":
 					fmt.Println("case: /carousel")
 					response := pocketClient.FetchItems()
@@ -120,6 +135,16 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 		Body:       "Hello, world",
 		StatusCode: 200,
 	}, nil
+}
+
+func createLoginRequestMessage(lineUserId string) *linebot.TemplateMessage {
+	button := linebot.NewButtonsTemplate(
+		"",
+		"",
+		"このアプリを利用するにはPocketにログインしてください。",
+		linebot.NewURIAction("ログイン", settings.AuthEndpointURL+"?lineUserId="+lineUserId),
+	)
+	return linebot.NewTemplateMessage("ログイン依頼", button)
 }
 
 func parseMessage(message string) (string, []string) {

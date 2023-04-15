@@ -1,6 +1,7 @@
 package pocket
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,12 +11,13 @@ import (
 )
 
 var (
-	BASE_URL = "https://getpocket.com/v3/"
+	BASE_URL = "https://getpocket.com/"
 
-	PATH_OAUTH_REQUEST = "oauth/request"
-	PATH_OAUTH_AUTHZ   = "oauth/authorize"
-	PATH_GET           = "get"
-	PATH_MODIFY        = "send"
+	PATH_OAUTH_REQUEST = "v3/oauth/request"
+	PATH_OAUTH_AUTHZ   = "auth/authorize"
+	PATH_OAUTH_TOKEN   = "v3/oauth/authorize"
+	PATH_GET           = "v3/get"
+	PATH_MODIFY        = "v3/send"
 )
 
 type Client struct {
@@ -90,6 +92,80 @@ func New(consumerKey string, accessToken string) (*Client, error) {
 	}, nil
 }
 
+func GetAuthorizationCode(consumerKey string, redirectURL string) (string, error) {
+	params := &struct {
+		CosumerKey  string `json:"consumer_key"`
+		RedirectURL string `json:"redirect_uri"`
+	}{
+		CosumerKey:  consumerKey,
+		RedirectURL: redirectURL,
+	}
+
+	jsonData, err := json.Marshal(params)
+	if err != nil {
+		fmt.Println("Error marshaling data:", err)
+		return "", nil
+	}
+
+	resp, err := http.Post(BASE_URL+PATH_OAUTH_REQUEST, "application/json", bytes.NewReader(jsonData))
+	if err != nil {
+		fmt.Printf("Error making request: %v\n", err)
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Error reading response body: %v\n", err)
+		return "", err
+	}
+
+	f, err := url.ParseQuery(string(body))
+	if err != nil {
+		fmt.Printf("Error parse formData: %v\n", err)
+		return "", nil
+	}
+
+	return f.Get("code"), nil
+}
+
+func GetAccessToken(consumerKey string, authorizationCode string) (token string, userName string, e error) {
+	params := &struct {
+		CosumerKey string `json:"consumer_key"`
+		Code       string `json:"code"`
+	}{
+		CosumerKey: consumerKey,
+		Code:       authorizationCode,
+	}
+
+	jsonData, err := json.Marshal(params)
+	if err != nil {
+		fmt.Println("Error marshaling data:", err)
+		return "", "", nil
+	}
+
+	resp, err := http.Post(BASE_URL+PATH_OAUTH_TOKEN, "application/json", bytes.NewReader(jsonData))
+	if err != nil {
+		fmt.Printf("Error making request: %v\n", err)
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Error reading response body: %v\n", err)
+		return "", "", err
+	}
+
+	f, err := url.ParseQuery(string(body))
+	if err != nil {
+		fmt.Printf("Error parse formData: %v\n", err)
+		return "", "", nil
+	}
+
+	return f.Get("access_token"), f.Get("username"), nil
+}
+
 func (c *Client) FetchItems() *GetResponse {
 	params := url.Values{}
 	params.Set("consumer_key", c.ConsumerKey)
@@ -107,6 +183,7 @@ func (c *Client) FetchItems() *GetResponse {
 		fmt.Printf("Error reading response body: %v\n", err)
 		return nil
 	}
+	fmt.Println(string(body))
 
 	var pocketResponse GetResponse
 	err = json.Unmarshal(body, &pocketResponse)
